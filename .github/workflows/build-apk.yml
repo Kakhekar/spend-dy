@@ -102,8 +102,13 @@ jobs:
             unzip -q "$RUNNER_TEMP/cmdtools.zip" -d "$RUNNER_TEMP/cmdtools"
             cp -r "$RUNNER_TEMP/cmdtools/cmdline-tools/." "$SDK/"
           fi
+          export ANDROID_HOME="$SDK"
+          export ANDROID_SDK_ROOT="$SDK"
           yes | "$SDK/bin/sdkmanager" --sdk_root="$SDK" --licenses > /dev/null || true
-          "$SDK/bin/sdkmanager" --sdk_root="$SDK" "platform-tools" "platforms;android-36" "build-tools;36.1.0"
+          "$SDK/bin/sdkmanager" --sdk_root="$SDK" --install "platform-tools" "platforms;android-36" "build-tools;36.1.0"
+          test -f "$SDK/platforms/android-36/source.properties"
+          test -f "$SDK/build-tools/36.1.0/source.properties"
+          "$SDK/bin/sdkmanager" --sdk_root="$SDK" --list_installed
           mkdir -p "$HOME/.bubblewrap"
           cat > "$HOME/.bubblewrap/config.json" <<EOF
           {"jdkPath":"$JAVA_HOME","androidSdkPath":"$SDK"}
