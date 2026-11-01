@@ -20,6 +20,7 @@ $("saveKey").onclick=()=>{
   const fbChanged=$("fb").value.trim()!==cfg.fb;
   cfg={key:$("key").value.trim(),model:$("model").value.trim()||"gemini-2.5-flash",fb:$("fb").value.trim()};
   ls.set("sd_cfg",cfg);
+  if(user&&cfg.key)window.cloud.putSettings({geminiKey:cfg.key,model:cfg.model}).catch(e=>setSync("Couldn't save key to Firestore: "+e.message));
   if(fbChanged){location.reload();return}
   $("settings").open=false;
 };
@@ -45,7 +46,21 @@ function onCloudUser(u,err){
   $("pill").classList.toggle("on",!!u);
   if(err)setSync("Firestore error: "+err.message+" (check your security rules)");
   else setSync(u?"Signed in as "+(u.email||u.uid)+". Entries are saved to Firestore and never deleted.":"Sign in to sync with Firestore.");
+  if(u&&!err)loadCloudSettings();
   render();
+}
+async function loadCloudSettings(){
+  try{
+    const s=await window.cloud.getSettings();
+    if(s&&s.geminiKey){
+      cfg.key=s.geminiKey;if(s.model)cfg.model=s.model;
+      $("key").value=cfg.key;$("model").value=cfg.model;
+      ls.set("sd_cfg",cfg);
+      $("settings").open=false;
+    }else if(cfg.key){
+      window.cloud.putSettings({geminiKey:cfg.key,model:cfg.model}).catch(()=>{});
+    }
+  }catch(e){setSync("Couldn't read settings from Firestore: "+e.message+" (update your rules)")}
 }
 function onCloudItems(list){
   cloudItems=list;
