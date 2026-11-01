@@ -2,7 +2,7 @@
 // There is intentionally no delete function: entries are only ever created or updated.
 import {initializeApp} from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
 import {getAuth,GoogleAuthProvider,signInWithPopup,onAuthStateChanged,signOut} from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
-import {initializeFirestore,persistentLocalCache,collection,doc,setDoc,onSnapshot} from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
+import {initializeFirestore,persistentLocalCache,collection,doc,setDoc,getDoc,onSnapshot} from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 
 let db,auth,uid,unsub,started=false;
 
@@ -27,5 +27,8 @@ window.cloud={
   },
   login(){return signInWithPopup(auth,new GoogleAuthProvider())},
   logout(){return signOut(auth)},
-  put(it){return setDoc(doc(db,"users",uid,"expenses",it.id),it)}
+  put(it){return setDoc(doc(db,"users",uid,"expenses",it.id),it)},
+  // Per-user settings (Gemini key + model) at users/{uid}/private/settings
+  async getSettings(){const s=await getDoc(doc(db,"users",uid,"private","settings"));return s.exists()?s.data():null},
+  putSettings(o){return setDoc(doc(db,"users",uid,"private","settings"),o,{merge:true})}
 };
