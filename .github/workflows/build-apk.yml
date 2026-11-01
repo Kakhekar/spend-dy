@@ -91,12 +91,24 @@ jobs:
         run: |
           set -euo pipefail
           npm install -g @bubblewrap/cli
+          # Bubblewrap only accepts an SDK folder with bin/ or tools/ at its top level,
+          # so build one from the Android command-line tools.
+          SDK="$HOME/android-sdk"
+          mkdir -p "$SDK"
+          if [ -d "$ANDROID_HOME/cmdline-tools/latest/bin" ]; then
+            cp -r "$ANDROID_HOME/cmdline-tools/latest/." "$SDK/"
+          else
+            curl -fsSL -o "$RUNNER_TEMP/cmdtools.zip" https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+            unzip -q "$RUNNER_TEMP/cmdtools.zip" -d "$RUNNER_TEMP/cmdtools"
+            cp -r "$RUNNER_TEMP/cmdtools/cmdline-tools/." "$SDK/"
+          fi
+          yes | "$SDK/bin/sdkmanager" --sdk_root="$SDK" --licenses > /dev/null || true
+          "$SDK/bin/sdkmanager" --sdk_root="$SDK" "platform-tools" "platforms;android-36" "build-tools;36.1.0"
           mkdir -p "$HOME/.bubblewrap"
           cat > "$HOME/.bubblewrap/config.json" <<EOF
-          {"jdkPath":"$JAVA_HOME","androidSdkPath":"$ANDROID_HOME"}
+          {"jdkPath":"$JAVA_HOME","androidSdkPath":"$SDK"}
           EOF
           cat "$HOME/.bubblewrap/config.json"
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
 
       - name: Write twa-manifest.json
         env:
