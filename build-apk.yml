@@ -1,0 +1,181 @@
+name: Build Android APK
+
+# Wraps your live GitHub Pages site as an Android app (Trusted Web Activity).
+# Run it from the Actions tab AFTER your site is deployed and shows the new icons/manifest.
+on:
+  workflow_dispatch:
+    inputs:
+      site_url:
+        description: "Live site URL. Leave blank to use https://<owner>.github.io/<repo>/"
+        required: false
+        default: ""
+
+permissions:
+  contents: write   # needed to attach the APK to a GitHub Release
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      # Optional repo secrets for a STABLE signing key (see README note in chat).
+      # Without them, a fresh key is made each run (fine for a first install).
+      BUBBLEWRAP_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD || 'spenddiary-ci-pass' }}
+      BUBBLEWRAP_KEY_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD || 'spenddiary-ci-pass' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Work out the site URL
+        id: site
+        env:
+          SITE_INPUT: ${{ inputs.site_url }}
+        run: |
+          set -euo pipefail
+          OWNER="${GITHUB_REPOSITORY_OWNER,,}"
+          REPO="${GITHUB_REPOSITORY#*/}"
+          if [ -n "$SITE_INPUT" ]; then
+            URL="$SITE_INPUT"
+          elif [ "${REPO,,}" = "$OWNER.github.io" ]; then
+            URL="https://$OWNER.github.io/"
+          else
+            URL="https://$OWNER.github.io/$REPO/"
+          fi
+          case "$URL" in */) ;; *) URL="$URL/" ;; esac
+          HOST="$(echo "$URL" | sed -E 's#https?://([^/]+)/.*#\1#')"
+          PATH_="$(echo "$URL" | sed -E 's#https?://[^/]+(/.*)#\1#')"
+          echo "url=$URL"   >> "$GITHUB_OUTPUT"
+          echo "host=$HOST" >> "$GITHUB_OUTPUT"
+          echo "path=$PATH_" >> "$GITHUB_OUTPUT"
+          echo "Site: $URL (host $HOST, start $PATH_)"
+
+      - name: Wait for the site, manifest and icon to be live
+        env:
+          URL: ${{ steps.site.outputs.url }}
+        run: |
+          for i in $(seq 1 20); do
+            if curl -fsS -o /dev/null "${URL}manifest.webmanifest" && curl -fsS -o /dev/null "${URL}icons/icon-512.png"; then
+              echo "Site is live."; exit 0
+            fi
+            echo "Not live yet (attempt $i/20)..."; sleep 15
+          done
+          echo "::error::Could not load ${URL}manifest.webmanifest. Enable GitHub Pages and push manifest.webmanifest + icons/ first."
+          exit 1
+
+      - name: Prepare signing key
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          mkdir -p twa
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > twa/android.keystore
+            echo "Using the keystore from repo secrets."
+          else
+            keytool -genkeypair -v -keystore twa/android.keystore -alias android \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass "$BUBBLEWRAP_KEYSTORE_PASSWORD" -keypass "$BUBBLEWRAP_KEY_PASSWORD" \
+              -dname "CN=Spend Diary, OU=Personal, O=Spend Diary, C=IN"
+            echo "::warning::No ANDROID_KEYSTORE_BASE64 secret found. Generated a throwaway key: later builds can't update this install (uninstall first)."
+          fi
+
+      - name: Install Bubblewrap and point it at the Java and Android SDKs
+        run: |
+          set -euo pipefail
+          npm install -g @bubblewrap/cli
+          mkdir -p "$HOME/.bubblewrap"
+          cat > "$HOME/.bubblewrap/config.json" <<EOF
+          {"jdkPath":"$JAVA_HOME","androidSdkPath":"$ANDROID_HOME"}
+          EOF
+          cat "$HOME/.bubblewrap/config.json"
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+
+      - name: Write twa-manifest.json
+        env:
+          SITE_URL: ${{ steps.site.outputs.url }}
+          SITE_HOST: ${{ steps.site.outputs.host }}
+          SITE_PATH: ${{ steps.site.outputs.path }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          node -e '
+          const e = process.env;
+          const m = {
+            packageId: "com.spenddiary.app",
+            host: e.SITE_HOST,
+            name: "Spend Diary",
+            launcherName: "Spend Diary",
+            display: "standalone",
+            orientation: "portrait",
+            themeColor: "#14110f",
+            themeColorDark: "#14110f",
+            navigationColor: "#14110f",
+            navigationColorDark: "#14110f",
+            navigationDividerColor: "#14110f",
+            navigationDividerColorDark: "#14110f",
+            backgroundColor: "#14110f",
+            enableNotifications: false,
+            startUrl: e.SITE_PATH,
+            iconUrl: e.SITE_URL + "icons/icon-512.png",
+            maskableIconUrl: e.SITE_URL + "icons/icon-maskable-512.png",
+            webManifestUrl: e.SITE_URL + "manifest.webmanifest",
+            fullScopeUrl: e.SITE_URL,
+            appVersionName: "1.0." + e.RUN_NUMBER,
+            appVersionCode: Number(e.RUN_NUMBER),
+            signingKey: { path: "./android.keystore", alias: "android" },
+            splashScreenFadeOutDuration: 300,
+            fallbackType: "customtabs",
+            enableSiteSettingsShortcut: true,
+            isChromeOSOnly: false,
+            isMetaQuest: false,
+            minSdkVersion: 21,
+            features: {},
+            alphaDependencies: { enabled: false },
+            shortcuts: [],
+            generatorApp: "bubblewrap-cli"
+          };
+          require("fs").writeFileSync("twa/twa-manifest.json", JSON.stringify(m, null, 2));
+          '
+          cat twa/twa-manifest.json
+
+      - name: Generate the Android project and build the APK
+        working-directory: twa
+        run: |
+          set -euo pipefail
+          bubblewrap update --skipVersionUpgrade < /dev/null
+          bubblewrap build --skipPwaValidation < /dev/null
+          ls -la
+          cp app-release-signed.apk SpendDiary.apk
+
+      - name: Show the signing fingerprint
+        working-directory: twa
+        run: |
+          {
+            echo "### Spend Diary APK built"
+            echo ""
+            echo "SHA-256 signing fingerprint (only needed to remove the address bar, see chat notes):"
+            echo '```'
+            keytool -list -v -keystore android.keystore -alias android -storepass "$BUBBLEWRAP_KEYSTORE_PASSWORD" | grep "SHA256:" || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload APK as a workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SpendDiary-apk
+          path: twa/SpendDiary.apk
+
+      - name: Publish a GitHub Release with the APK
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: apk-${{ github.run_number }}
+          name: Spend Diary APK #${{ github.run_number }}
+          body: "Install SpendDiary.apk on Android (allow installs from unknown sources when asked)."
+          files: twa/SpendDiary.apk
