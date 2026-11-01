@@ -28,6 +28,8 @@ $("saveKey").onclick=()=>{
 /* ---------- Firestore ---------- */
 function fbConfig(){
   let s=cfg.fb;if(!s)return null;
+  const m=s.match(/firebaseConfig\s*=\s*(\{[\s\S]*?\})/);
+  if(m)s=m[1];
   const a=s.indexOf("{"),b=s.lastIndexOf("}");if(a<0||b<a)return null;
   s=s.slice(a,b+1);
   try{return JSON.parse(s)}catch(e){}
