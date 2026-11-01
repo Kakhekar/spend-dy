@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spend Diary</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <div>
+      <h1>Spend <span>Diary</span></h1>
+      <div class="mute" id="monthLabel"></div>
+      <span class="pill" id="pill">local mode</span>
+    </div>
+    <div style="text-align:right">
+      <div class="big" id="monthTotal">₹0</div>
+      <div class="mute">spent this month</div>
+    </div>
+  </div>
+
+  <details class="card" id="settings">
+    <summary>Settings · Gemini key &amp; Firestore</summary>
+    <div class="row"><input id="key" type="password" placeholder="Gemini API key"></div>
+    <div class="row"><input id="model" placeholder="Model" value="gemini-2.5-flash"></div>
+    <div class="row"><textarea id="fb" placeholder="Paste your Firebase web app config here, e.g. { apiKey: &quot;...&quot;, authDomain: &quot;...&quot;, projectId: &quot;...&quot;, appId: &quot;...&quot; }"></textarea></div>
+    <div class="row">
+      <button id="saveKey">Save</button>
+      <button class="ghost" id="login">Sign in with Google</button>
+      <button class="ghost" id="logout" hidden>Sign out</button>
+    </div>
+    <div class="mute" id="sync" style="margin-top:8px"></div>
+  </details>
+
+  <div class="card">
+    <h2>Log it your way</h2>
+    <textarea id="txt" placeholder="e.g. chai 40, uber to office 220, groceries at DMart 1840 yesterday, Netflix 649 (regret)"></textarea>
+    <div class="row">
+      <button id="parse">Add with Gemini</button>
+      <button class="ghost" id="mic">🎤 Speak</button>
+      <button class="ghost" id="scanBtn">📷 Scan receipt</button>
+      <input id="scan" type="file" accept="image/*" hidden>
+      <span class="mute" id="status"></span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Regret meter</h2>
+    <div class="split" id="split"></div>
+    <div class="mute" style="margin-top:8px">Tap a tag on any entry to cycle: worth it → meh → regret.</div>
+  </div>
+
+  <div class="card">
+    <h2>Where it went (this month)</h2>
+    <div id="cats"></div>
+    <h2 style="margin-top:16px">Last 14 days</h2>
+    <div class="days" id="days"></div>
+  </div>
+
+  <div class="card">
+    <h2>Money Mirror</h2>
+    <button id="mirror">Read my habits</button>
+    <div class="out" id="mirrorOut"></div>
+  </div>
+
+  <div class="card">
+    <h2>Ask your data</h2>
+    <div class="row" style="margin-top:0"><input id="q" placeholder="How much did I spend on food last week?"><button id="ask">Ask</button></div>
+    <div class="out" id="askOut"></div>
+  </div>
+
+  <div class="card">
+    <h2>Ledger</h2>
+    <div id="ledger"></div>
+    <div class="row">
+      <button class="ghost" id="csv">Export CSV</button>
+      <button class="ghost" id="showHidden">Show hidden</button>
+    </div>
+    <div class="mute" style="margin-top:8px">Entries are never deleted. "hide" only removes one from totals and charts, and you can restore it anytime.</div>
+  </div>
+</div>
+
+<script type="module" src="cloud.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
