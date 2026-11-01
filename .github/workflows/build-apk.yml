@@ -91,22 +91,23 @@ jobs:
         run: |
           set -euo pipefail
           npm install -g @bubblewrap/cli
-          # Bubblewrap only accepts an SDK folder with bin/ or tools/ at its top level,
-          # so build one from the Android command-line tools.
-          SDK="$HOME/android-sdk"
-          mkdir -p "$SDK"
-          if [ -d "$ANDROID_HOME/cmdline-tools/latest/bin" ]; then
-            cp -r "$ANDROID_HOME/cmdline-tools/latest/." "$SDK/"
-          else
+          # Install into the runner's standard SDK root so sdkmanager and Gradle
+          # read the same package metadata.
+          SDK="${ANDROID_HOME:-$HOME/android-sdk}"
+          if [ ! -x "$SDK/cmdline-tools/latest/bin/sdkmanager" ]; then
             curl -fsSL -o "$RUNNER_TEMP/cmdtools.zip" https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
             unzip -q "$RUNNER_TEMP/cmdtools.zip" -d "$RUNNER_TEMP/cmdtools"
-            cp -r "$RUNNER_TEMP/cmdtools/cmdline-tools/." "$SDK/"
+            mkdir -p "$SDK/cmdline-tools/latest"
+            cp -r "$RUNNER_TEMP/cmdtools/cmdline-tools/." "$SDK/cmdline-tools/latest/"
           fi
+          mkdir -p "$SDK/bin"
+          ln -sf "$SDK/cmdline-tools/latest/bin/sdkmanager" "$SDK/bin/sdkmanager"
           export ANDROID_HOME="$SDK"
           export ANDROID_SDK_ROOT="$SDK"
-          yes | "$SDK/bin/sdkmanager" --sdk_root="$SDK" --licenses > /dev/null || true
+          yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" --licenses > /dev/null || true
           "$SDK/bin/sdkmanager" --sdk_root="$SDK" --install "platform-tools" "platforms;android-36" "build-tools;36.1.0"
           test -f "$SDK/platforms/android-36/source.properties"
+          test -f "$SDK/platforms/android-36/android.jar"
           test -f "$SDK/build-tools/36.1.0/source.properties"
           "$SDK/bin/sdkmanager" --sdk_root="$SDK" --list_installed
           mkdir -p "$HOME/.bubblewrap"
