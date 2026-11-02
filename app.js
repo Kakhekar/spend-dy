@@ -96,7 +96,11 @@ function upsert(it){
 async function gemini(parts,json){
   if(!cfg.key){$("settings").open=true;throw new Error("Add your Gemini API key in Settings first.")}
   const body={contents:[{parts}]};
-  if(json)body.generationConfig={responseMimeType:"application/json"};
+  if(cfg.model.startsWith("gemini-2.5-")||json){
+    body.generationConfig={};
+    if(cfg.model.startsWith("gemini-2.5-"))body.generationConfig.thinkingConfig={thinkingBudget:0};
+    if(json)body.generationConfig.responseMimeType="application/json";
+  }
   const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(cfg.model)}:generateContent?key=${encodeURIComponent(cfg.key)}`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
   const d=await r.json();
   if(!r.ok)throw new Error(d.error?.message||"Gemini request failed");
@@ -144,18 +148,18 @@ $("mic").onclick=()=>{
   const r=new SR();r.lang="en-IN";r.onresult=e=>{$("txt").value=(($("txt").value+" ")+e.results[0][0].transcript).trim()};
   r.onerror=()=>setStatus("Mic error.");r.onend=()=>setStatus("");setStatus("Listening…");r.start();
 };
-function recent(n){return live().slice(0,n).map(({amount,merchant,category,date,verdict,note})=>({amount,merchant,category,date,verdict,note}))}
+function compactRecent(n){return live().slice(0,n).map(({amount,merchant,category,date,verdict,note})=>[amount,merchant,category,date,verdict,note])}
 $("mirror").onclick=async()=>{
   if(live().length<3){$("mirrorOut").textContent="Log at least 3 expenses first.";return}
   $("mirror").disabled=true;$("mirrorOut").textContent="Looking in the mirror…";
-  try{$("mirrorOut").textContent=await gemini([{text:`You are "Money Mirror", a witty but kind friend reviewing someone's spending diary (INR, today ${today()}). Using this data, write: (1) a two-line "money personality" with a playful title, (2) three specific observations citing real numbers and merchants, especially the items tagged regret, (3) one small, concrete tweak for next week. Plain text, no markdown symbols, under 180 words.\n\nData: ${JSON.stringify(recent(80))}`}])}
+  try{$("mirrorOut").textContent=await gemini([{text:`You are "Money Mirror", a witty but kind friend reviewing an INR spending diary (today ${today()}). Give: (1) a two-line money personality with a playful title, (2) three specific observations with real amounts and merchants, especially regrets, (3) one small practical tweak for next week. Plain text, under 180 words. Rows are [amount, merchant, category, date, verdict, note].\n\n${JSON.stringify(compactRecent(80))}`}])}
   catch(e){$("mirrorOut").textContent=e.message}
   $("mirror").disabled=false;
 };
 $("ask").onclick=async()=>{
   const q=$("q").value.trim();if(!q)return;
   $("ask").disabled=true;$("askOut").textContent="…";
-  try{$("askOut").textContent=await gemini([{text:`Answer the question using only this expense data (INR). Today is ${today()}. Do the arithmetic carefully and show the total. If the data cannot answer it, say so. Be brief, plain text.\n\nData: ${JSON.stringify(recent(500))}\n\nQuestion: ${q}`}])}
+  try{$("askOut").textContent=await gemini([{text:`Answer using only this INR expense data. Today is ${today()}. Calculate accurately; show totals. If the data cannot answer, say so. Be brief. Rows are [amount, merchant, category, date, verdict, note].\n\nData: ${JSON.stringify(compactRecent(500))}\n\nQuestion: ${q}`}])}
   catch(e){$("askOut").textContent=e.message}
   $("ask").disabled=false;
 };
