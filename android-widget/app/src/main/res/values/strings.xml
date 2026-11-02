@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Spend Diary Widget</string>
+    <string name="widget_name">Spend Diary</string>
+    <string name="widget_description">Today’s and this month’s spending. Tap to open Spend Diary.</string>
+</resources>

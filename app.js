@@ -36,6 +36,11 @@ function fbConfig(){
   try{return JSON.parse(s.replace(/([{,]\s*)([A-Za-z_]\w*)\s*:/g,'$1"$2":').replace(/'/g,'"').replace(/,\s*}/g,'}'))}catch(e){return null}
 }
 function startCloud(tries=0){
+  if(window.SpendDiaryWidget){
+    $("login").hidden=true;$("logout").hidden=true;
+    setSync("Widget edition stores data locally. Export a CSV from your synced diary and import it here to show those entries in the widget.");
+    return;
+  }
   if(!cfg.fb){setSync("Local mode: data stays in this browser. Paste a Firebase config to sync with Firestore.");return}
   if(!window.cloud){if(tries<50)return setTimeout(()=>startCloud(tries+1),200);setSync("Couldn't load Firebase. Serve this folder over http://localhost (python3 -m http.server 8000) and check your connection.");return}
   const c=fbConfig();if(!c){setSync("That Firebase config doesn't look valid.");return}
@@ -76,6 +81,7 @@ function onCloudItems(list){
   render();
 }
 $("login").onclick=async()=>{
+  if(window.SpendDiaryWidget){setSync("Google sign-in is unavailable in the widget app. Use Import CSV to bring in entries from your synced diary.");return}
   if(location.protocol==="file:"){setSync("Google sign-in doesn't work from a file. In this folder run: python3 -m http.server 8000, then open http://localhost:8000");return}
   if(!window.cloud||!cfg.fb){setSync("Save a valid Firebase config first.");return}
   try{await window.cloud.login()}catch(e){setSync(e.message)}
@@ -124,6 +130,48 @@ function addParsed(text){
   }
   return n;
 }
+function parseCsv(text){
+  const rows=[];let row=[],cell="",quoted=false;
+  for(let i=0;i<text.length;i++){
+    const c=text[i];
+    if(quoted){
+      if(c==='"'&&text[i+1]==='"'){cell+='"';i++}
+      else if(c==='"')quoted=false;
+      else cell+=c;
+    }else if(c==='"')quoted=true;
+    else if(c===","){row.push(cell);cell=""}
+    else if(c==="\n"||c==="\r"){
+      if(c==="\r"&&text[i+1]==="\n")i++;
+      row.push(cell);rows.push(row);row=[];cell="";
+    }else cell+=c;
+  }
+  if(quoted)throw new Error("The CSV has an unfinished quoted field.");
+  if(cell||row.length){row.push(cell);rows.push(row)}
+  if(!rows.length)throw new Error("The CSV file is empty.");
+  const headers=rows.shift().map(h=>h.replace(/^\uFEFF/,"").trim().toLowerCase());
+  const col=name=>headers.indexOf(name);
+  if(col("date")<0||col("amount")<0)throw new Error("This CSV needs date and amount columns. Export it from Spend Diary and try again.");
+  let count=0;
+  for(const cells of rows){
+    const amount=Number(cells[col("amount")]);
+    const date=(cells[col("date")]||"").trim();
+    if(!Number.isFinite(amount)||amount<=0||!/^\d{4}-\d{2}-\d{2}$/.test(date))continue;
+    const value=name=>{const i=col(name);return i<0?"":(cells[i]||"").trim()};
+    const verdict=value("verdict");
+    upsert({id:crypto.randomUUID?crypto.randomUUID():String(Date.now()+Math.random()),amount,merchant:value("merchant"),category:CATS.includes(value("category"))?value("category"):"Other",date,note:value("note"),verdict:["worth","meh","regret"].includes(verdict)?verdict:"meh",archived:value("hidden").toLowerCase()==="yes",createdAt:Date.now()});
+    count++;
+  }
+  return count;
+}
+$("importCsvBtn").onclick=()=>$("importCsv").click();
+$("importCsv").onchange=async ev=>{
+  const file=ev.target.files[0];if(!file)return;
+  try{
+    const count=parseCsv(await file.text());
+    setStatus(`Imported ${count} entr${count===1?"y":"ies"} from CSV.`);
+  }catch(e){setStatus(e.message)}
+  ev.target.value="";
+};
 $("parse").onclick=async()=>{
   const t=$("txt").value.trim();if(!t)return;
   $("parse").disabled=true;setStatus("Thinking…");
@@ -168,8 +216,11 @@ $("ask").onclick=async()=>{
 function render(){
   const L=live(),ym=today().slice(0,7);
   const mon=L.filter(i=>i.date.startsWith(ym));
+  const dayTotal=L.filter(i=>i.date===today()).reduce((s,i)=>s+i.amount,0);
+  const monthTotal=mon.reduce((s,i)=>s+i.amount,0);
+  if(window.SpendDiaryWidget)window.SpendDiaryWidget.updateTotals(inr(dayTotal),inr(monthTotal),new Date().toLocaleDateString("en-IN",{weekday:"short",day:"numeric",month:"short"}),new Date().toLocaleDateString("en-IN",{month:"short",year:"numeric"}));
   $("monthLabel").textContent=new Date().toLocaleDateString("en-IN",{month:"long",year:"numeric"});
-  $("monthTotal").textContent=inr(mon.reduce((s,i)=>s+i.amount,0));
+  $("monthTotal").textContent=inr(monthTotal);
 
   const sums={worth:0,meh:0,regret:0};mon.forEach(i=>sums[i.verdict]=(sums[i.verdict]||0)+i.amount);
   $("split").innerHTML=[["worth","Worth it","var(--good)"],["meh","Meh","var(--meh)"],["regret","Regret","var(--bad)"]].map(([k,l,c])=>`<div><strong style="color:${c}">${inr(sums[k])}</strong><span class="mute">${l}</span></div>`).join("");

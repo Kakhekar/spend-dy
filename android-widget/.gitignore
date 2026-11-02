@@ -1,0 +1,6 @@
+.gradle/
+build/
+app/build/
+android.keystore
+local.properties
+SpendDiaryWidget.apk
